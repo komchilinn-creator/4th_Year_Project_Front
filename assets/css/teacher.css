@@ -1,0 +1,33 @@
+﻿.teacher-dashboard .card {
+  border-left: 4px solid var(--accent);
+}
+
+.teacher-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.teacher-controls button {
+  flex: 1 1 160px;
+}
+
+.teacher-token {
+  display: grid;
+  gap: 16px;
+  align-items: center;
+  justify-items: center;
+}
+
+.teacher-token img {
+  max-width: 220px;
+  border-radius: 18px;
+  background: #fff;
+  padding: 12px;
+  box-shadow: 0 12px 32px rgba(16, 36, 61, .12);
+}
+
+.teacher-token strong {
+  letter-spacing: .02em;
+}
