@@ -1,9 +1,5 @@
-﻿@import url("components.css");
 @import url("layout.css");
 @import url("auth.css");
-@import url("admin.css");
-@import url("student.css");
-@import url("teacher.css");
 
 :root {
   --bg: #f4f7fb;

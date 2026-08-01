@@ -68,10 +68,6 @@
   margin: 0;
 }
 
-.auth-page.signup .auth-simple {
-  border-color: rgba(20, 108, 148, .18);
-}
-
 @media(max-width: 720px) {
   .auth-page {
     padding: 24px;
@@ -83,34 +79,5 @@
 
   .auth-panel h2 {
     font-size: 30px;
-  }
-}
-
-.auth-page.signup .auth-hero {
-  background: linear-gradient(180deg, #144765 0%, #1ea68a 100%);
-}
-
-@media(max-width: 980px) {
-  .auth-box {
-    grid-template-columns: 1fr;
-  }
-
-  .auth-hero {
-    order: 2;
-  }
-}
-
-@media(max-width: 720px) {
-  .auth-page {
-    padding: 28px;
-  }
-
-  .auth-hero,
-  .auth-panel {
-    padding: 28px;
-  }
-
-  .auth-hero h1 {
-    font-size: 32px;
   }
 }
