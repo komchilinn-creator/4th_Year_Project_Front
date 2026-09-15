@@ -1,6 +1,5 @@
 window.api = async (action, payload, method = 'POST') => {
-  //const base = 'http://localhost/4th_Year_Pj_Backend/public/index.php';
-  const base = 'http://10.181.20.42/4th_Year_Pj_Backend/public/index.php';
+  const base = window.APP_CONFIG?.API_BASE_URL || 'http://localhost/4th_Year_Pj_Backend/public/index.php';
   const token = localStorage.getItem('attendqr-token');
   const options = { method, credentials: 'include', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } };
   let url = `${base}?action=${encodeURIComponent(action)}`;
