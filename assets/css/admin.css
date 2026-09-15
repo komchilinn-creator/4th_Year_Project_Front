@@ -1,0 +1,53 @@
+﻿.admin-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin: 26px 0 14px;
+}
+
+.admin-summary .card {
+  padding: 22px;
+  border-left: 4px solid var(--accent);
+}
+
+.admin-summary strong {
+  display: block;
+  font-size: 28px;
+  margin-top: 12px;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.admin-actions button {
+  min-width: 150px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.status-pill.approved {
+  background: #e8f6ef;
+  color: #106543;
+}
+
+.status-pill.pending {
+  background: #fff4d8;
+  color: #9a6d00;
+}
+
+@media(max-width: 900px) {
+  .admin-summary {
+    grid-template-columns: 1fr;
+  }
+}
