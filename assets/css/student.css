@@ -2,6 +2,9 @@
   border-left: 4px solid #146c94;
 }
 
+.attendance-good { color: #198754; font-weight: 700; }
+.attendance-bad { color: #dc3545; font-weight: 700; }
+
 .student-actions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
