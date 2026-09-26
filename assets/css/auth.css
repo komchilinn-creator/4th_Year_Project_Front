@@ -50,6 +50,10 @@
   color: #1f3853;
 }
 
+.auth-panel [hidden] {
+  display: none !important;
+}
+
 .auth-panel form input,
 .auth-panel form select {
   background: #f6fbff;

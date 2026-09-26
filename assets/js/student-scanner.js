@@ -97,10 +97,51 @@ function runJsQrLoop(video, generation, onError) {
   scan();
 }
 
+function decodeStudentQrCanvas(canvas) {
+  if (typeof jsQR !== 'function') return null;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  const frame = context.getImageData(0, 0, canvas.width, canvas.height);
+  return jsQR(frame.data, frame.width, frame.height, { inversionAttempts: 'attemptBoth' })?.data || null;
+}
+
+async function studentQrCanvasFromFile(file) {
+  const canvas = document.createElement('canvas');
+  if ('createImageBitmap' in window) {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+    return canvas;
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    const image = await new Promise((resolve, reject) => { const element = new Image(); element.onload = () => resolve(element); element.onerror = reject; element.src = url; });
+    const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
+    canvas.width = Math.round(image.naturalWidth * scale); canvas.height = Math.round(image.naturalHeight * scale);
+    canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  } finally { URL.revokeObjectURL(url); }
+}
+
+async function scanStudentQrPhoto(event) {
+  const input = event.target;
+  const file = input.files?.[0];
+  const result = document.querySelector('#student-scan-result');
+  if (!file) return;
+  try {
+    const value = decodeStudentQrCanvas(await studentQrCanvasFromFile(file));
+    if (!value) throw new Error('No QR code was found in that image. Try again with the QR code filling more of the photo.');
+    handleStudentDetectedCode(value);
+  } catch (error) { result.innerHTML = studentNotice(error.message || 'The selected image could not be read.', 'error'); }
+  finally { input.value = ''; }
+}
+
 async function openStudentCamera() {
   const result = document.querySelector('#student-scan-result');
   if (!navigator.mediaDevices?.getUserMedia) {
-    result.innerHTML = studentNotice('Camera access is not supported in this browser. Enter the token shown by your teacher.', 'error');
+    result.innerHTML = studentNotice('Live camera access requires HTTPS on this phone. Opening the camera-photo fallback instead.', 'error');
+    document.querySelector('#student-photo-input').click();
     return;
   }
   const hasBarcodeDetector = 'BarcodeDetector' in window;
@@ -129,8 +170,10 @@ async function openStudentCamera() {
 }
 
 function renderStudentScanner(user) {
-  studentScanApp.innerHTML = `<aside><div class="brand">ATTEND<span>QR</span></div><p>${studentEscape(user.full_name)}</p><small>student</small><nav><a href="../../index.html">Dashboard</a><a href="scan-qr.html">Scan QR</a><a href="attendance-history.html">Attendance history</a><a href="schedule.html">Schedule</a></nav></aside><section class="workspace"><header><span class="eyebrow">Student</span><h1>Scan attendance QR</h1></header><div class="card scan-card"><p>Open your camera to scan the teacher's active QR code, or enter the displayed token.</p><button class="secondary" id="student-camera" type="button">Open camera</button><video id="student-preview" autoplay playsinline hidden></video><form id="student-scan-form"><label>QR token<input name="token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus></label><button type="submit">Record attendance</button></form><div id="student-scan-result" aria-live="polite"></div></div></section>`;
+  studentScanApp.innerHTML = `<aside><div class="brand">ATTEND<span>QR</span></div><p>${studentEscape(user.full_name)}</p><small>student</small><nav><a href="../../index.html">Dashboard</a><a href="scan-qr.html">Scan QR</a><a href="attendance-history.html">Attendance history</a><a href="schedule.html">Schedule</a></nav></aside><section class="workspace"><header><span class="eyebrow">Student</span><h1>Scan attendance QR</h1></header><div class="card scan-card"><p>Open your camera to scan the teacher's active QR code, or enter the displayed token.</p><button class="secondary" id="student-camera" type="button">Open live camera</button> <button class="secondary" id="student-photo" type="button">Take or choose QR photo</button><input id="student-photo-input" type="file" accept="image/*" capture="environment" hidden><video id="student-preview" autoplay playsinline hidden></video><form id="student-scan-form"><label>QR token<input name="token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus></label><button type="submit">Record attendance</button></form><div id="student-scan-result" aria-live="polite"></div></div></section>`;
   document.querySelector('#student-camera').onclick = openStudentCamera;
+  document.querySelector('#student-photo').onclick = () => document.querySelector('#student-photo-input').click();
+  document.querySelector('#student-photo-input').onchange = scanStudentQrPhoto;
   document.querySelector('#student-scan-form').onsubmit = submitStudentScan;
 }
 

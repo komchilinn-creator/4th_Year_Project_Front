@@ -56,14 +56,8 @@ function renderQrDisplay(session, targetId = 'qr-result') {
 
 async function createSession(user) {
   const subjects = user.subjects || [];
-  const years = [...new Set(subjects.map(subject => Number(subject.year_level)))];
-  const options = year => subjects.filter(subject => Number(subject.year_level) === Number(year)).map(subject => `<option value="${teacherEscape(subject.id)}">${teacherEscape(subject.code)} — ${teacherEscape(subject.name)}</option>`).join('');
-  render(`<header><span class="eyebrow">Teacher</span><h1>Create QR session</h1></header><div class="card"><p class="notice">Generating a new session disables the previous active QR session.</p><form id="session-form"><label>Session title<input name="title" value="Class attendance" required></label><label>Year / class<select name="year_level" id="teacher-year" required>${years.map(year => `<option value="${year}">${year} Year</option>`).join('')}</select></label><label>Subject<select name="subject_id" id="teacher-subject" required></select></label><label>Valid for minutes<input name="minutes" type="number" min="1" max="240" value="10" required></label><button${subjects.length ? '' : ' disabled'}>Generate QR</button></form><div id="qr-result"></div></div>`);
-  const yearSelect = document.querySelector('#teacher-year');
-  const subjectSelect = document.querySelector('#teacher-subject');
-  const updateSubjects = () => { subjectSelect.innerHTML = options(yearSelect.value); };
-  yearSelect.onchange = updateSubjects;
-  updateSubjects();
+  const options = subjects.map(subject => `<option value="${teacherEscape(subject.id)}">${teacherEscape(subject.code)} — ${teacherEscape(subject.name)}</option>`).join('');
+  render(`<header><span class="eyebrow">Teacher</span><h1>Create QR session</h1></header><div class="card"><p class="notice">Generating a new session disables the previous active QR session.</p><form id="session-form"><label>Class<input value="${teacherEscape(user.class_name || '')}" readonly></label><label>Session title<input name="title" value="Class attendance" required></label><label>Subject<select name="subject_id" id="teacher-subject" required>${options}</select></label><label>Valid for minutes<input name="minutes" type="number" min="1" max="240" value="10" required></label><button${subjects.length ? '' : ' disabled'}>Generate QR</button></form><div id="qr-result"></div></div>`);
   document.querySelector('#session-form').onsubmit = async event => {
     event.preventDefault();
     const button = event.target.querySelector('button');
@@ -71,9 +65,9 @@ async function createSession(user) {
     button.disabled = true;
     clearInterval(qrTimer);
     try {
-      const data = await teacherApi('attendance/create', Object.fromEntries(new FormData(event.target)));
-      const expiresAt = new Date(data.expires_at);
-      const session = { token: data.token, qr_payload: data.qr_payload, expires_at: data.expires_at, title: Object.fromEntries(new FormData(event.target)).title, class: data.class, subject: data.subject };
+      const formData = Object.fromEntries(new FormData(event.target));
+      const data = await teacherApi('attendance/create', formData);
+      const session = { token: data.token, qr_payload: data.qr_payload, expires_at: data.expires_at, title: formData.title, class: data.class, subject: data.subject };
       sessionStorage.setItem('attendqr-active-session', JSON.stringify(session));
       renderQrDisplay(session);
       result.insertAdjacentHTML('beforeend', '<p><a class="button-link" href="qr-display.html">Open QR display</a></p>');
@@ -93,7 +87,7 @@ async function liveAttendance() {
       const present = Number(data.present_students ?? data.stats?.present_students ?? data.attendance?.length ?? 0);
       const absent = Math.max(0, total - present);
       const session = data.session;
-      document.querySelector('#live-result').innerHTML = session ? `<div class="stats"><div class="card"><strong>Total students</strong><h2>${total}</h2></div><div class="card"><strong>Present students</strong><h2>${present}</h2></div><div class="card"><strong>Absent students</strong><h2>${absent}</h2></div></div><div class="card"><h2>${teacherEscape(session.title)}</h2><p>${teacherEscape(session.subject)} · expires ${new Date(session.expires_at).toLocaleTimeString()}</p><div class="table-responsive"><table><thead><tr><th>Student</th><th>Number</th><th>Time</th></tr></thead><tbody>${data.attendance.map(item => `<tr><td>${teacherEscape(item.full_name)}</td><td>${teacherEscape(item.student_no)}</td><td>${new Date(item.recorded_at).toLocaleTimeString()}</td></tr>`).join('') || '<tr><td colspan="3">Nobody has checked in yet.</td></tr>'}</tbody></table></div></div>` : '<div class="card">No active attendance session.</div>';
+      document.querySelector('#live-result').innerHTML = session ? `<div class="stats"><div class="card"><strong>Total students</strong><h2>${total}</h2></div><div class="card"><strong>Present students</strong><h2>${present}</h2></div><div class="card"><strong>Absent students</strong><h2>${absent}</h2></div></div><div class="card"><h2>${teacherEscape(session.title)}</h2><p>${teacherEscape(session.class_name)} · ${teacherEscape(session.subject)} · expires ${new Date(session.expires_at).toLocaleTimeString()}</p><div class="table-responsive"><table><thead><tr><th>Student</th><th>Number</th><th>Time</th></tr></thead><tbody>${data.attendance.map(item => `<tr><td>${teacherEscape(item.full_name)}</td><td>${teacherEscape(item.student_no)}</td><td>${new Date(item.recorded_at).toLocaleTimeString()}</td></tr>`).join('') || '<tr><td colspan="3">Nobody has checked in yet.</td></tr>'}</tbody></table></div></div>` : '<div class="card">No active attendance session.</div>';
     } catch (error) { document.querySelector('#live-result').innerHTML = message(error.message, 'error'); }
   };
   render(`<header><span class="eyebrow">Teacher</span><h1>Live attendance</h1></header><div id="live-result"></div>`);
