@@ -8,6 +8,13 @@ function teacherEscape(value) {
   return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
 }
 
+const teacherClassChoices = (classes, name) => classes.map((item, index) => `<label class="class-choice"><input type="radio" name="${name}" value="${item.id}" data-academic-year-id="${item.academic_year_id}"${index === 0 ? ' checked' : ''}><span>${teacherEscape(item.name)}</span></label>`).join('');
+const teacherSelectedClass = container => container?.querySelector('input[type="radio"]:checked') || null;
+const setTeacherClass = (container, value) => {
+  const input = [...(container?.querySelectorAll('input[type="radio"]') || [])].find(item => Number(item.value) === Number(value));
+  if (input) input.checked = true;
+};
+
 async function teacherApi(action, payload, method = 'POST') {
   const base = window.APP_CONFIG?.API_BASE_URL || 'http://localhost/4th_Year_Pj_Backend/public/index.php';
   const options = { method, credentials: 'include', headers: { 'Content-Type': 'application/json', ...(teacherToken ? { Authorization: `Bearer ${teacherToken}` } : {}) } };
@@ -110,29 +117,24 @@ async function createSession(user) {
     return;
   }
   const subjects = user.subjects || [];
-  const years = [...new Map(subjects.map(subject => [subject.academic_year_id, subject])).values()];
-  render(`<header><span class="eyebrow">Teacher</span><h1>Create QR session</h1></header><div class="card"><p class="notice">The QR session remains active until you explicitly end it.</p><form id="session-form"><label>Academic year<select id="teacher-year" required>${years.map(subject => `<option value="${subject.academic_year_id}">${teacherEscape(subject.academic_year_name)}</option>`).join('')}</select></label><label>Semester<select id="teacher-semester" required></select></label><label>Subject<select name="teacher_subject_id" id="teacher-subject" required></select></label><label>Class<select id="teacher-class" required></select></label><label>Session title<input name="title" value="Class attendance" required></label><button${subjects.length ? '' : ' disabled'}>Generate QR</button></form><div id="qr-result"></div></div>`);
-  const year = document.querySelector('#teacher-year');
+  const classes = [...new Map(subjects.map(subject => [subject.class_id, { id: subject.class_id, name: subject.class_name, academic_year_id: subject.academic_year_id }])).values()];
+  render(`<header><span class="eyebrow">Teacher</span><h1>Create QR session</h1></header><div class="card"><p class="notice">The QR session remains active until you explicitly end it.</p><form id="session-form"><fieldset><legend>Academic year / Class</legend><div class="class-choice-list" id="teacher-classes">${teacherClassChoices(classes, 'teacher_class_id')}</div></fieldset><label>Semester<select id="teacher-semester" required></select></label><label>Subject<select name="teacher_subject_id" id="teacher-subject" required></select></label><label>Session title<input name="title" value="Class attendance" required></label><button${subjects.length ? '' : ' disabled'}>Generate QR</button></form><div id="qr-result"></div></div>`);
+  const classChoicesRoot = document.querySelector('#teacher-classes');
   const semester = document.querySelector('#teacher-semester');
   const subject = document.querySelector('#teacher-subject');
-  const classSelect = document.querySelector('#teacher-class');
-  const updateClass = () => {
-    const selected = subjects.find(item => Number(item.assignment_id) === Number(subject.value));
-    classSelect.innerHTML = selected ? `<option value="${selected.class_id}">${teacherEscape(selected.class_name)}</option>` : '';
-  };
   const updateSubjects = () => {
-    const available = subjects.filter(item => Number(item.academic_year_id) === Number(year.value) && Number(item.semester_id) === Number(semester.value));
+    const classId = teacherSelectedClass(classChoicesRoot)?.value;
+    const available = subjects.filter(item => Number(item.class_id) === Number(classId) && Number(item.semester_id) === Number(semester.value));
     subject.innerHTML = available.map(item => `<option value="${item.assignment_id}">${teacherEscape(teacherSubjectText(item))}</option>`).join('');
-    updateClass();
   };
   const updateSemesters = () => {
-    const available = [...new Map(subjects.filter(item => Number(item.academic_year_id) === Number(year.value)).map(item => [item.semester_id, item])).values()];
+    const classId = teacherSelectedClass(classChoicesRoot)?.value;
+    const available = [...new Map(subjects.filter(item => Number(item.class_id) === Number(classId)).map(item => [item.semester_id, item])).values()];
     semester.innerHTML = available.map(item => `<option value="${item.semester_id}">${teacherEscape(item.semester_name)}</option>`).join('');
     updateSubjects();
   };
-  year.onchange = updateSemesters;
+  classChoicesRoot.onchange = updateSemesters;
   semester.onchange = updateSubjects;
-  subject.onchange = updateClass;
   updateSemesters();
   document.querySelector('#session-form').onsubmit = async event => {
     event.preventDefault();
@@ -182,14 +184,14 @@ function teacherAttendanceDetails(data) {
 
 async function attendancePage(user) {
   const subjects = user.subjects || [];
-  const years = [...new Map(subjects.map(subject => [subject.academic_year_id, subject])).values()];
-  render(`<header><span class="eyebrow">Teacher</span><h1>Attendance</h1></header><div class="card attendance-subject-filter"><label>Academic year<select id="attendance-year"${subjects.length ? '' : ' disabled'}>${years.map(subject => `<option value="${subject.academic_year_id}">${teacherEscape(subject.academic_year_name)}</option>`).join('')}</select></label><label>Semester<select id="attendance-semester"${subjects.length ? '' : ' disabled'}></select></label><label>Subject<select id="attendance-subject"${subjects.length ? '' : ' disabled'}></select></label></div><section class="card attendance-session-pane attendance-session-pane--wide"><h2>Attendance Sessions</h2><div id="attendance-session-list"></div></section><div class="attendance-modal" id="attendance-modal" hidden><button class="attendance-modal__backdrop" type="button" data-close-attendance aria-label="Close attendance details"></button><section class="attendance-modal__window" role="dialog" aria-modal="true" aria-labelledby="attendance-modal-title"><button class="attendance-modal__close" type="button" data-close-attendance aria-label="Close attendance details">×</button><div class="attendance-detail-pane" id="attendance-detail"><div class="empty-state">Loading attendance…</div></div></section></div>`);
+  const classes = [...new Map(subjects.map(subject => [subject.class_id, { id: subject.class_id, name: subject.class_name, academic_year_id: subject.academic_year_id }])).values()];
+  render(`<header><span class="eyebrow">Teacher</span><h1>Attendance</h1></header><div class="card attendance-subject-filter"><fieldset><legend>Academic year / Class</legend><div class="class-choice-list" id="attendance-classes">${teacherClassChoices(classes, 'attendance_class_id')}</div></fieldset><label>Semester<select id="attendance-semester"${subjects.length ? '' : ' disabled'}></select></label><label>Subject<select id="attendance-subject"${subjects.length ? '' : ' disabled'}></select></label></div><section class="card attendance-session-pane attendance-session-pane--wide"><h2>Attendance Sessions</h2><div id="attendance-session-list"></div></section><div class="attendance-modal" id="attendance-modal" hidden><button class="attendance-modal__backdrop" type="button" data-close-attendance aria-label="Close attendance details"></button><section class="attendance-modal__window" role="dialog" aria-modal="true" aria-labelledby="attendance-modal-title"><button class="attendance-modal__close" type="button" data-close-attendance aria-label="Close attendance details">×</button><div class="attendance-detail-pane" id="attendance-detail"><div class="empty-state">Loading attendance…</div></div></section></div>`);
   if (!subjects.length) {
     document.querySelector('#attendance-session-list').innerHTML = '<div class="empty-state">No subjects are assigned to this teacher account.</div>';
     return;
   }
 
-  const yearSelect = document.querySelector('#attendance-year');
+  const classChoicesRoot = document.querySelector('#attendance-classes');
   const semesterSelect = document.querySelector('#attendance-semester');
   const subjectSelect = document.querySelector('#attendance-subject');
   const sessionList = document.querySelector('#attendance-session-list');
@@ -253,16 +255,18 @@ async function attendancePage(user) {
   };
 
   const updateSubjects = () => {
-    const available = subjects.filter(subject => Number(subject.academic_year_id) === Number(yearSelect.value) && Number(subject.semester_id) === Number(semesterSelect.value));
+    const classId = teacherSelectedClass(classChoicesRoot)?.value;
+    const available = subjects.filter(subject => Number(subject.class_id) === Number(classId) && Number(subject.semester_id) === Number(semesterSelect.value));
     subjectSelect.innerHTML = available.map(subject => `<option value="${subject.assignment_id}">${teacherEscape(teacherSubjectText(subject))}</option>`).join('');
     loadSessions(false);
   };
   const updateSemesters = () => {
-    const available = [...new Map(subjects.filter(subject => Number(subject.academic_year_id) === Number(yearSelect.value)).map(subject => [subject.semester_id, subject])).values()];
+    const classId = teacherSelectedClass(classChoicesRoot)?.value;
+    const available = [...new Map(subjects.filter(subject => Number(subject.class_id) === Number(classId)).map(subject => [subject.semester_id, subject])).values()];
     semesterSelect.innerHTML = available.map(subject => `<option value="${subject.semester_id}">${teacherEscape(subject.semester_name)}</option>`).join('');
     updateSubjects();
   };
-  yearSelect.onchange = updateSemesters;
+  classChoicesRoot.onchange = updateSemesters;
   semesterSelect.onchange = updateSubjects;
   subjectSelect.onchange = () => loadSessions(false);
   try {
@@ -270,7 +274,7 @@ async function attendancePage(user) {
     if (active.session) {
       const selected = subjects.find(subject => Number(subject.assignment_id) === Number(active.session.teacher_subject_id));
       if (selected) {
-        yearSelect.value = String(selected.academic_year_id);
+        setTeacherClass(classChoicesRoot, selected.class_id);
         updateSemesters();
         semesterSelect.value = String(selected.semester_id);
         updateSubjects();
@@ -301,12 +305,12 @@ async function qrDisplay() {
 
 async function reportsForTeacher(user) {
   const subjects = user.subjects || [];
-  const years = [...new Map(subjects.map(subject => [subject.academic_year_id, subject])).values()];
-  render(`<header><span class="eyebrow">Teacher</span><h1>Attendance reports</h1></header><div class="card"><form id="teacher-report-filter"><label>Month<input name="month" type="month" value="${new Date().toISOString().slice(0, 7)}" required></label><label>Academic year<select name="academic_year_id" id="report-year">${years.map(subject => `<option value="${subject.academic_year_id}">${teacherEscape(subject.academic_year_name)}</option>`).join('')}</select></label><label>Semester<select name="semester_id" id="report-semester"></select></label><label>Subject<select name="teacher_subject_id" id="report-subject"></select></label><button>View report</button></form></div><div id="report-result"></div>`);
-  const year = document.querySelector('#report-year'); const semester = document.querySelector('#report-semester'); const subject = document.querySelector('#report-subject');
-  const updateSubjects = () => { subject.innerHTML = subjects.filter(item => Number(item.academic_year_id) === Number(year.value) && Number(item.semester_id) === Number(semester.value)).map(item => `<option value="${item.assignment_id}">${teacherEscape(teacherSubjectText(item))}</option>`).join(''); };
-  const updateSemesters = () => { const available = [...new Map(subjects.filter(item => Number(item.academic_year_id) === Number(year.value)).map(item => [item.semester_id, item])).values()]; semester.innerHTML = available.map(item => `<option value="${item.semester_id}">${teacherEscape(item.semester_name)}</option>`).join(''); updateSubjects(); };
-  year.onchange = updateSemesters; semester.onchange = updateSubjects; updateSemesters();
+  const classes = [...new Map(subjects.map(subject => [subject.class_id, { id: subject.class_id, name: subject.class_name, academic_year_id: subject.academic_year_id }])).values()];
+  render(`<header><span class="eyebrow">Teacher</span><h1>Attendance reports</h1></header><div class="card"><form id="teacher-report-filter"><label>Month<input name="month" type="month" value="${new Date().toISOString().slice(0, 7)}" required></label><fieldset><legend>Academic year / Class</legend><div class="class-choice-list" id="report-classes">${teacherClassChoices(classes, 'report_class_id')}</div></fieldset><label>Semester<select id="report-semester"></select></label><label>Subject<select name="teacher_subject_id" id="report-subject"></select></label><button>View report</button></form></div><div id="report-result"></div>`);
+  const classChoicesRoot = document.querySelector('#report-classes'); const semester = document.querySelector('#report-semester'); const subject = document.querySelector('#report-subject');
+  const updateSubjects = () => { const classId = teacherSelectedClass(classChoicesRoot)?.value; subject.innerHTML = subjects.filter(item => Number(item.class_id) === Number(classId) && Number(item.semester_id) === Number(semester.value)).map(item => `<option value="${item.assignment_id}">${teacherEscape(teacherSubjectText(item))}</option>`).join(''); };
+  const updateSemesters = () => { const classId = teacherSelectedClass(classChoicesRoot)?.value; const available = [...new Map(subjects.filter(item => Number(item.class_id) === Number(classId)).map(item => [item.semester_id, item])).values()]; semester.innerHTML = available.map(item => `<option value="${item.semester_id}">${teacherEscape(item.semester_name)}</option>`).join(''); updateSubjects(); };
+  classChoicesRoot.onchange = updateSemesters; semester.onchange = updateSubjects; updateSemesters();
   const load = async () => {
     try {
       const data = await teacherApi('reports/monthly', Object.fromEntries(new FormData(document.querySelector('#teacher-report-filter'))), 'GET');
