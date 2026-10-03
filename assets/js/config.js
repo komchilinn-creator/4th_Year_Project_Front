@@ -2,12 +2,13 @@
 // Change ONLY the value of API_BASE_URL below when moving between environments.
 // This does not change how the API is called anywhere else in the app -
 // api-client.js and the standalone page scripts simply read this value.
-const appHost = window.location.hostname || 'localhost';
+const apiProtocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+const apiHost = window.location.hostname || 'localhost';
 
 window.APP_CONFIG = {
-  // Uses the host that served the frontend. This keeps localhost working on the
-  // development PC and lets phones on the same LAN reach the XAMPP API.
-  API_BASE_URL: `http://${appHost}/4th_Year_Pj_Backend/public/index.php`,
+  // The frontend runs separately on port 8000. Apache serves the backend on
+  // the standard HTTP/HTTPS port using the same hostname.
+  API_BASE_URL: `${apiProtocol}//${apiHost}/4th_Year_Pj_Backend/public/index.php`,
 
   // --- LAN testing (phone/laptop on the same Wi-Fi as the dev machine) ---
   //API_BASE_URL: 'http://10.181.20.42/4th_Year_Pj_Backend/public/index.php',

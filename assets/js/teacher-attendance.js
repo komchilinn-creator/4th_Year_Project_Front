@@ -1,7 +1,8 @@
 const teacherApp = document.querySelector('#teacher-app');
 const teacherToken = localStorage.getItem('attendqr-token');
-let qrTimer;
 let liveTimer;
+let qrAttendanceTimer;
+let qrAttendanceLatestKey = null;
 
 function teacherEscape(value) {
   return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
@@ -29,48 +30,119 @@ function qrImageUrl(payload, size = 320) {
 }
 
 function render(content) {
-  teacherApp.innerHTML = `<aside><div class="brand">ATTEND<span>QR</span></div><nav><a href="dashboard.html">Dashboard</a><a href="create-session.html">Create QR session</a><a href="live-attendance.html">Live attendance</a><a href="manual-attendance.html">Manual attendance</a><a href="reports.html">Reports</a></nav></aside><section class="workspace">${content}</section>`;
+  teacherApp.innerHTML = `<aside><div class="brand">Easy<span>Attend</span></div><nav><a href="dashboard.html">Dashboard</a><a href="create-session.html">Create QR session</a><a href="live-attendance.html">Attendance</a><a href="manual-attendance.html">Manual attendance</a><a href="reports.html">Reports</a></nav></aside><section class="workspace">${content}</section>`;
 }
 
 function renderQrDisplay(session, targetId = 'qr-result') {
   const target = document.querySelector(`#${targetId}`);
-  if (!target || !session?.token || !session?.expires_at) return;
-  const expiresAt = new Date(session.expires_at);
+  if (!target || !session) return;
+  if (session.status !== 'ACTIVE' || !session.token) {
+    target.innerHTML = `${message(session.status === 'ENDED' ? 'This QR attendance session has ended. Students can no longer submit attendance.' : 'The active QR token cannot be restored. End this legacy session and create a new one.', 'error')}<p><span class="status-pill">Session Status: ${teacherEscape(session.status || 'UNKNOWN')}</span></p>`;
+    return;
+  }
   const payload = session.qr_payload || `ATTENDQR:${session.token}`;
-  const context = session.subject ? `${session.class || ''} · ${session.subject.code} — ${session.subject.name}` : '';
-  target.innerHTML = `<div class="teacher-token"><small>ACTIVE QR TOKEN</small><img id="attendance-qr" alt="Attendance QR code" src="${qrImageUrl(payload)}"><strong>${teacherEscape(session.token)}</strong><p>${teacherEscape(session.title || 'Attendance session')}</p>${context ? `<p>${teacherEscape(context)}</p>` : ''}<p>Expires <time datetime="${expiresAt.toISOString()}">${expiresAt.toLocaleTimeString()}</time></p><p id="qr-countdown"></p><div id="qr-image-error"></div></div>`;
+  const context = session.subject ? `${session.class_name || session.class || ''} · ${teacherSubjectText(session.subject)}` : '';
+  target.innerHTML = `<div class="qr-session-layout"><div class="teacher-token"><small>ACTIVE QR TOKEN</small><span class="status-pill">Session Status: ACTIVE</span><img id="attendance-qr" alt="Attendance QR code" src="${qrImageUrl(payload)}"><strong>${teacherEscape(session.token)}</strong><p>${teacherEscape(session.title || 'Attendance session')}</p>${context ? `<p>${teacherEscape(context)}</p>` : ''}<p>Started ${new Date(session.starts_at).toLocaleString()}</p><div id="qr-image-error"></div><div class="teacher-controls"><a class="button-link secondary" href="live-attendance.html">View attendance</a><button class="danger" type="button" data-end-session>End QR Session</button></div><div data-end-result></div></div><section class="qr-attendance-popup" id="qr-attendance-popup" aria-live="polite"><div class="qr-attendance-popup__header"><span><i></i>Recent check-ins</span><small id="qr-popup-count">0 present</small></div><div class="qr-attendance-popup__rows" id="qr-popup-rows"><p class="qr-attendance-popup__empty">Waiting for students…</p></div></section></div>`;
   document.querySelector('#attendance-qr').onerror = event => {
     event.currentTarget.hidden = true;
     document.querySelector('#qr-image-error').innerHTML = message('QR image could not be loaded. Check your internet connection, then use the token shown above.', 'error');
   };
-  const countdown = document.querySelector('#qr-countdown');
-  clearInterval(qrTimer);
-  const update = () => {
-    const remaining = expiresAt.getTime() - Date.now();
-    if (remaining <= 0) { clearInterval(qrTimer); countdown.innerHTML = message('This QR code has expired.', 'error'); return; }
-    countdown.textContent = `Valid for ${Math.ceil(remaining / 1000)} seconds`;
+  document.querySelector('[data-end-session]').onclick = async event => {
+    if (!confirm('Are you sure you want to end this QR attendance session? Students will no longer be able to submit attendance.')) return;
+    event.currentTarget.disabled = true;
+    try {
+      const data = await teacherApi('attendance/end', { session_id: session.id || session.session_id });
+      clearInterval(qrAttendanceTimer);
+      target.innerHTML = `${message(data.message)}<p><span class="status-pill">Session Status: ENDED</span></p><p><a class="button-link" href="create-session.html">Create another QR session</a></p>`;
+    } catch (error) {
+      event.currentTarget.disabled = false;
+      document.querySelector('[data-end-result]').innerHTML = message(error.message, 'error');
+    }
   };
-  update();
-  qrTimer = setInterval(update, 1000);
+  startQrAttendancePopup(session);
+}
+
+const teacherSubjectCode = subject => subject.code || 'No code';
+const teacherSubjectText = subject => `${teacherSubjectCode(subject)} — ${subject.name}`;
+
+function renderQrAttendancePopup(data) {
+  const target = document.querySelector('#qr-popup-rows');
+  const count = document.querySelector('#qr-popup-count');
+  if (!target || !count) return;
+  const rows = data.attendance || [];
+  const nextKey = rows[0] ? `${rows[0].student_no}|${rows[0].recorded_at}` : null;
+  const highlightFirst = Boolean(qrAttendanceLatestKey && nextKey && nextKey !== qrAttendanceLatestKey);
+  count.textContent = `${Number(data.present_students || 0)} present`;
+  target.innerHTML = rows.length ? rows.map((student, index) => `<div class="qr-attendance-notification${highlightFirst && index === 0 ? ' is-new' : ''}"><span class="qr-attendance-notification__icon">✓</span><span><strong>${teacherEscape(student.full_name)}</strong><small>${teacherEscape(student.student_no)}</small></span><time>${new Date(student.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>`).join('') : '<p class="qr-attendance-popup__empty">Waiting for students…</p>';
+  qrAttendanceLatestKey = nextKey;
+}
+
+async function startQrAttendancePopup(session) {
+  clearInterval(qrAttendanceTimer);
+  qrAttendanceLatestKey = null;
+  const refresh = async () => {
+    const popup = document.querySelector('#qr-attendance-popup');
+    if (!popup) { clearInterval(qrAttendanceTimer); return false; }
+    try {
+      const data = await teacherApi('attendance/live', { session_id: session.id || session.session_id }, 'GET');
+      if (!document.querySelector('#qr-attendance-popup')) return;
+      renderQrAttendancePopup(data);
+      if (data.session?.status !== 'ACTIVE') {
+        clearInterval(qrAttendanceTimer);
+        popup.classList.add('is-ended');
+        return false;
+      }
+      return true;
+    } catch (error) {
+      const rows = document.querySelector('#qr-popup-rows');
+      if (rows) rows.innerHTML = `<p class="qr-attendance-popup__empty">${teacherEscape(error.message)}</p>`;
+      return true;
+    }
+  };
+  if (await refresh()) qrAttendanceTimer = setInterval(refresh, 2000);
 }
 
 async function createSession(user) {
+  const active = await teacherApi('attendance/active', null, 'GET');
+  if (active.session) {
+    render(`<header><span class="eyebrow">Teacher</span><h1>QR session</h1></header><div class="card qr-display-card"><div id="qr-result"></div></div>`);
+    renderQrDisplay(active.session);
+    return;
+  }
   const subjects = user.subjects || [];
-  const options = subjects.map(subject => `<option value="${teacherEscape(subject.id)}">${teacherEscape(subject.code)} — ${teacherEscape(subject.name)}</option>`).join('');
-  render(`<header><span class="eyebrow">Teacher</span><h1>Create QR session</h1></header><div class="card"><p class="notice">Generating a new session disables the previous active QR session.</p><form id="session-form"><label>Class<input value="${teacherEscape(user.class_name || '')}" readonly></label><label>Session title<input name="title" value="Class attendance" required></label><label>Subject<select name="subject_id" id="teacher-subject" required>${options}</select></label><label>Valid for minutes<input name="minutes" type="number" min="1" max="240" value="10" required></label><button${subjects.length ? '' : ' disabled'}>Generate QR</button></form><div id="qr-result"></div></div>`);
+  const years = [...new Map(subjects.map(subject => [subject.academic_year_id, subject])).values()];
+  render(`<header><span class="eyebrow">Teacher</span><h1>Create QR session</h1></header><div class="card"><p class="notice">The QR session remains active until you explicitly end it.</p><form id="session-form"><label>Academic year<select id="teacher-year" required>${years.map(subject => `<option value="${subject.academic_year_id}">${teacherEscape(subject.academic_year_name)}</option>`).join('')}</select></label><label>Semester<select id="teacher-semester" required></select></label><label>Subject<select name="teacher_subject_id" id="teacher-subject" required></select></label><label>Class<select id="teacher-class" required></select></label><label>Session title<input name="title" value="Class attendance" required></label><button${subjects.length ? '' : ' disabled'}>Generate QR</button></form><div id="qr-result"></div></div>`);
+  const year = document.querySelector('#teacher-year');
+  const semester = document.querySelector('#teacher-semester');
+  const subject = document.querySelector('#teacher-subject');
+  const classSelect = document.querySelector('#teacher-class');
+  const updateClass = () => {
+    const selected = subjects.find(item => Number(item.assignment_id) === Number(subject.value));
+    classSelect.innerHTML = selected ? `<option value="${selected.class_id}">${teacherEscape(selected.class_name)}</option>` : '';
+  };
+  const updateSubjects = () => {
+    const available = subjects.filter(item => Number(item.academic_year_id) === Number(year.value) && Number(item.semester_id) === Number(semester.value));
+    subject.innerHTML = available.map(item => `<option value="${item.assignment_id}">${teacherEscape(teacherSubjectText(item))}</option>`).join('');
+    updateClass();
+  };
+  const updateSemesters = () => {
+    const available = [...new Map(subjects.filter(item => Number(item.academic_year_id) === Number(year.value)).map(item => [item.semester_id, item])).values()];
+    semester.innerHTML = available.map(item => `<option value="${item.semester_id}">${teacherEscape(item.semester_name)}</option>`).join('');
+    updateSubjects();
+  };
+  year.onchange = updateSemesters;
+  semester.onchange = updateSubjects;
+  subject.onchange = updateClass;
+  updateSemesters();
   document.querySelector('#session-form').onsubmit = async event => {
     event.preventDefault();
     const button = event.target.querySelector('button');
     const result = document.querySelector('#qr-result');
     button.disabled = true;
-    clearInterval(qrTimer);
     try {
       const formData = Object.fromEntries(new FormData(event.target));
-      const data = await teacherApi('attendance/create', formData);
-      const session = { token: data.token, qr_payload: data.qr_payload, expires_at: data.expires_at, title: formData.title, class: data.class, subject: data.subject };
-      sessionStorage.setItem('attendqr-active-session', JSON.stringify(session));
-      renderQrDisplay(session);
-      result.insertAdjacentHTML('beforeend', '<p><a class="button-link" href="qr-display.html">Open QR display</a></p>');
+      await teacherApi('attendance/create', formData);
+      await createSession(user);
     } catch (error) {
       result.innerHTML = message(error.message, 'error');
     } finally {
@@ -79,21 +151,135 @@ async function createSession(user) {
   };
 }
 
-async function liveAttendance() {
-  const refresh = async () => {
-    try {
-      const data = await teacherApi('attendance/live', null, 'GET');
-      const total = Number(data.total_students ?? data.stats?.total_students ?? 0);
-      const present = Number(data.present_students ?? data.stats?.present_students ?? data.attendance?.length ?? 0);
-      const absent = Math.max(0, total - present);
-      const session = data.session;
-      document.querySelector('#live-result').innerHTML = session ? `<div class="stats"><div class="card"><strong>Total students</strong><h2>${total}</h2></div><div class="card"><strong>Present students</strong><h2>${present}</h2></div><div class="card"><strong>Absent students</strong><h2>${absent}</h2></div></div><div class="card"><h2>${teacherEscape(session.title)}</h2><p>${teacherEscape(session.class_name)} · ${teacherEscape(session.subject)} · expires ${new Date(session.expires_at).toLocaleTimeString()}</p><div class="table-responsive"><table><thead><tr><th>Student</th><th>Number</th><th>Time</th></tr></thead><tbody>${data.attendance.map(item => `<tr><td>${teacherEscape(item.full_name)}</td><td>${teacherEscape(item.student_no)}</td><td>${new Date(item.recorded_at).toLocaleTimeString()}</td></tr>`).join('') || '<tr><td colspan="3">Nobody has checked in yet.</td></tr>'}</tbody></table></div></div>` : '<div class="card">No active attendance session.</div>';
-    } catch (error) { document.querySelector('#live-result').innerHTML = message(error.message, 'error'); }
+function teacherAttendanceDate(value) {
+  return new Date(String(value || '').replace(' ', 'T'));
+}
+
+function teacherAttendanceTime(value, seconds = false) {
+  if (!value) return '—';
+  return teacherAttendanceDate(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', ...(seconds ? { second: '2-digit' } : {}) });
+}
+
+function teacherAttendanceSessionList(sessions) {
+  if (!sessions.length) return '<div class="empty-state">No attendance sessions for this subject.</div>';
+  const groups = new Map();
+  sessions.forEach(session => {
+    const date = teacherAttendanceDate(session.starts_at);
+    const month = date.toLocaleDateString([], { month: 'long', year: 'numeric' });
+    if (!groups.has(month)) groups.set(month, []);
+    groups.get(month).push(session);
+  });
+  return [...groups.entries()].map(([month, items]) => `<section class="attendance-month"><h3>${teacherEscape(month)}</h3>${items.map(session => { const date = teacherAttendanceDate(session.starts_at); const active = session.status === 'ACTIVE'; return `<button type="button" class="attendance-session-item${active ? ' is-live' : ''}" data-session-id="${session.id}"><span class="attendance-session-date">${active ? '<i class="attendance-live-dot" aria-label="Live"></i>' : ''}<strong>${teacherEscape(date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }))}</strong></span><span>${teacherEscape(teacherAttendanceTime(session.starts_at))} – ${active ? '<b>LIVE</b>' : teacherEscape(teacherAttendanceTime(session.ends_at))}</span><small>${teacherEscape(session.class_name || 'Class not specified')} · ${active ? 'Active' : 'Ended'}</small></button>`; }).join('')}</section>`).join('');
+}
+
+function teacherAttendanceDetails(data) {
+  const session = data.session;
+  const active = session.status === 'ACTIVE';
+  const start = teacherAttendanceDate(session.starts_at);
+  const rows = data.attendance || [];
+  return `<div class="attendance-detail-heading"><div><span class="eyebrow">Selected session</span><h2 id="attendance-modal-title">${active ? '<i class="attendance-live-dot" aria-label="Live"></i>' : ''}${teacherEscape(start.toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' }))}</h2><p>${teacherEscape(teacherAttendanceTime(session.starts_at))} – ${active ? '<strong>LIVE</strong>' : teacherEscape(teacherAttendanceTime(session.ends_at))} · ${teacherEscape(session.class_name || 'Class not specified')}</p></div><span class="status-pill">${teacherEscape(session.status)}</span></div><div class="attendance-detail-summary"><strong>${Number(data.present_students || 0)}</strong><span>QR submissions</span></div>${active ? '<p class="field-help">Showing the latest 3 submissions. This list updates automatically.</p>' : '<p class="field-help">Showing every student who submitted attendance for this session.</p>'}<div class="table-responsive"><table><thead><tr><th>Student Name</th><th>Roll No.</th><th>Submitted</th></tr></thead><tbody>${rows.map(item => `<tr><td>${teacherEscape(item.full_name)}</td><td>${teacherEscape(item.student_no)}</td><td>${teacherEscape(teacherAttendanceTime(item.recorded_at, true))}</td></tr>`).join('') || '<tr><td colspan="3">No students submitted attendance for this session.</td></tr>'}</tbody></table></div>`;
+}
+
+async function attendancePage(user) {
+  const subjects = user.subjects || [];
+  const years = [...new Map(subjects.map(subject => [subject.academic_year_id, subject])).values()];
+  render(`<header><span class="eyebrow">Teacher</span><h1>Attendance</h1></header><div class="card attendance-subject-filter"><label>Academic year<select id="attendance-year"${subjects.length ? '' : ' disabled'}>${years.map(subject => `<option value="${subject.academic_year_id}">${teacherEscape(subject.academic_year_name)}</option>`).join('')}</select></label><label>Semester<select id="attendance-semester"${subjects.length ? '' : ' disabled'}></select></label><label>Subject<select id="attendance-subject"${subjects.length ? '' : ' disabled'}></select></label></div><section class="card attendance-session-pane attendance-session-pane--wide"><h2>Attendance Sessions</h2><div id="attendance-session-list"></div></section><div class="attendance-modal" id="attendance-modal" hidden><button class="attendance-modal__backdrop" type="button" data-close-attendance aria-label="Close attendance details"></button><section class="attendance-modal__window" role="dialog" aria-modal="true" aria-labelledby="attendance-modal-title"><button class="attendance-modal__close" type="button" data-close-attendance aria-label="Close attendance details">×</button><div class="attendance-detail-pane" id="attendance-detail"><div class="empty-state">Loading attendance…</div></div></section></div>`);
+  if (!subjects.length) {
+    document.querySelector('#attendance-session-list').innerHTML = '<div class="empty-state">No subjects are assigned to this teacher account.</div>';
+    return;
+  }
+
+  const yearSelect = document.querySelector('#attendance-year');
+  const semesterSelect = document.querySelector('#attendance-semester');
+  const subjectSelect = document.querySelector('#attendance-subject');
+  const sessionList = document.querySelector('#attendance-session-list');
+  const detail = document.querySelector('#attendance-detail');
+  const modal = document.querySelector('#attendance-modal');
+  let selectedSessionId = null;
+  let requestSequence = 0;
+
+  const closeModal = () => {
+    clearInterval(liveTimer);
+    requestSequence++;
+    selectedSessionId = null;
+    modal.hidden = true;
+    document.body.classList.remove('attendance-modal-open');
+    document.querySelectorAll('.attendance-session-item').forEach(item => item.classList.remove('is-selected'));
   };
-  render(`<header><span class="eyebrow">Teacher</span><h1>Live attendance</h1></header><div id="live-result"></div>`);
-  await refresh();
-  clearInterval(liveTimer);
-  liveTimer = setInterval(refresh, 5000);
+  modal.querySelectorAll('[data-close-attendance]').forEach(button => button.onclick = closeModal);
+
+  const loadDetail = async sessionId => {
+    const sequence = ++requestSequence;
+    const data = await teacherApi('attendance/session', { session_id: sessionId }, 'GET');
+    if (sequence !== requestSequence || !document.querySelector('#attendance-detail')) return null;
+    detail.innerHTML = teacherAttendanceDetails(data);
+    document.querySelectorAll('.attendance-session-item').forEach(item => item.classList.toggle('is-selected', Number(item.dataset.sessionId) === Number(sessionId)));
+    return data;
+  };
+
+  const selectSession = async sessionId => {
+    clearInterval(liveTimer);
+    selectedSessionId = Number(sessionId);
+    modal.hidden = false;
+    document.body.classList.add('attendance-modal-open');
+    detail.innerHTML = '<div class="empty-state">Loading attendance…</div>';
+    try {
+      const data = await loadDetail(selectedSessionId);
+      if (data?.session?.status === 'ACTIVE') {
+        liveTimer = setInterval(async () => {
+          if (!document.querySelector('#attendance-detail')) { clearInterval(liveTimer); return; }
+          try {
+            const update = await loadDetail(selectedSessionId);
+            if (update?.session?.status !== 'ACTIVE') {
+              clearInterval(liveTimer);
+              await loadSessions(true);
+            }
+          } catch (error) { detail.innerHTML = message(error.message, 'error'); }
+        }, 2000);
+      }
+    } catch (error) { detail.innerHTML = message(error.message, 'error'); }
+  };
+
+  const loadSessions = async keepModalOpen => {
+    clearInterval(liveTimer);
+    sessionList.innerHTML = '<div class="empty-state">Loading sessions…</div>';
+    if (!keepModalOpen) closeModal();
+    try {
+      const data = await teacherApi('attendance/sessions', { teacher_subject_id: subjectSelect.value }, 'GET');
+      sessionList.innerHTML = teacherAttendanceSessionList(data.sessions || []);
+      document.querySelectorAll('.attendance-session-item').forEach(item => item.onclick = () => selectSession(item.dataset.sessionId));
+      if (keepModalOpen && selectedSessionId) document.querySelector(`[data-session-id="${selectedSessionId}"]`)?.classList.add('is-selected');
+    } catch (error) { sessionList.innerHTML = message(error.message, 'error'); }
+  };
+
+  const updateSubjects = () => {
+    const available = subjects.filter(subject => Number(subject.academic_year_id) === Number(yearSelect.value) && Number(subject.semester_id) === Number(semesterSelect.value));
+    subjectSelect.innerHTML = available.map(subject => `<option value="${subject.assignment_id}">${teacherEscape(teacherSubjectText(subject))}</option>`).join('');
+    loadSessions(false);
+  };
+  const updateSemesters = () => {
+    const available = [...new Map(subjects.filter(subject => Number(subject.academic_year_id) === Number(yearSelect.value)).map(subject => [subject.semester_id, subject])).values()];
+    semesterSelect.innerHTML = available.map(subject => `<option value="${subject.semester_id}">${teacherEscape(subject.semester_name)}</option>`).join('');
+    updateSubjects();
+  };
+  yearSelect.onchange = updateSemesters;
+  semesterSelect.onchange = updateSubjects;
+  subjectSelect.onchange = () => loadSessions(false);
+  try {
+    const active = await teacherApi('attendance/active', null, 'GET');
+    if (active.session) {
+      const selected = subjects.find(subject => Number(subject.assignment_id) === Number(active.session.teacher_subject_id));
+      if (selected) {
+        yearSelect.value = String(selected.academic_year_id);
+        updateSemesters();
+        semesterSelect.value = String(selected.semester_id);
+        updateSubjects();
+        subjectSelect.value = String(selected.assignment_id);
+      }
+    }
+  } catch (error) { /* Session history remains available when there is no active session. */ }
+  if (!subjectSelect.options.length) updateSemesters();
+  await loadSessions(false);
 }
 
 function manualAttendance() {
@@ -105,24 +291,26 @@ function manualAttendance() {
   };
 }
 
-function qrDisplay() {
-  const session = JSON.parse(sessionStorage.getItem('attendqr-active-session') || 'null');
-  render(`<header><span class="eyebrow">Teacher</span><h1>Display QR code</h1></header><div class="card qr-display-card"><div id="qr-display-result"></div><p><a class="button-link" href="create-session.html">Create a new session</a></p></div>`);
+async function qrDisplay() {
+  const data = await teacherApi('attendance/active', null, 'GET');
+  const session = data.session;
+  render(`<header><span class="eyebrow">Teacher</span><h1>Display QR code</h1></header><div class="card qr-display-card"><div id="qr-display-result"></div></div>`);
   if (!session) { document.querySelector('#qr-display-result').innerHTML = message('No QR session is available. Create a session first.', 'error'); return; }
   renderQrDisplay(session, 'qr-display-result');
 }
 
 async function reportsForTeacher(user) {
   const subjects = user.subjects || [];
-  const years = [...new Set(subjects.map(subject => Number(subject.year_level)))];
-  const subjectOptions = year => subjects.filter(subject => Number(subject.year_level) === Number(year)).map(subject => `<option value="${teacherEscape(subject.id)}">${teacherEscape(subject.code)} — ${teacherEscape(subject.name)}</option>`).join('');
-  render(`<header><span class="eyebrow">Teacher</span><h1>Attendance reports</h1></header><div class="card"><form id="teacher-report-filter"><label>Month<input name="month" type="month" value="${new Date().toISOString().slice(0, 7)}" required></label><label>Year / class<select name="year_level" id="report-year">${years.map(year => `<option value="${year}">${year} Year</option>`).join('')}</select></label><label>Subject<select name="subject_id" id="report-subject"></select></label><button>View report</button></form></div><div id="report-result"></div>`);
-  const year = document.querySelector('#report-year'); const subject = document.querySelector('#report-subject');
-  const updateSubjects = () => { subject.innerHTML = subjectOptions(year.value); }; year.onchange = updateSubjects; updateSubjects();
+  const years = [...new Map(subjects.map(subject => [subject.academic_year_id, subject])).values()];
+  render(`<header><span class="eyebrow">Teacher</span><h1>Attendance reports</h1></header><div class="card"><form id="teacher-report-filter"><label>Month<input name="month" type="month" value="${new Date().toISOString().slice(0, 7)}" required></label><label>Academic year<select name="academic_year_id" id="report-year">${years.map(subject => `<option value="${subject.academic_year_id}">${teacherEscape(subject.academic_year_name)}</option>`).join('')}</select></label><label>Semester<select name="semester_id" id="report-semester"></select></label><label>Subject<select name="teacher_subject_id" id="report-subject"></select></label><button>View report</button></form></div><div id="report-result"></div>`);
+  const year = document.querySelector('#report-year'); const semester = document.querySelector('#report-semester'); const subject = document.querySelector('#report-subject');
+  const updateSubjects = () => { subject.innerHTML = subjects.filter(item => Number(item.academic_year_id) === Number(year.value) && Number(item.semester_id) === Number(semester.value)).map(item => `<option value="${item.assignment_id}">${teacherEscape(teacherSubjectText(item))}</option>`).join(''); };
+  const updateSemesters = () => { const available = [...new Map(subjects.filter(item => Number(item.academic_year_id) === Number(year.value)).map(item => [item.semester_id, item])).values()]; semester.innerHTML = available.map(item => `<option value="${item.semester_id}">${teacherEscape(item.semester_name)}</option>`).join(''); updateSubjects(); };
+  year.onchange = updateSemesters; semester.onchange = updateSubjects; updateSemesters();
   const load = async () => {
     try {
       const data = await teacherApi('reports/monthly', Object.fromEntries(new FormData(document.querySelector('#teacher-report-filter'))), 'GET');
-      document.querySelector('#report-result').innerHTML = `<div class="card"><div class="table-responsive"><table><thead><tr><th>Student</th><th>Number</th><th>Attended</th><th>Total sessions</th><th>Percentage</th><th>Status</th></tr></thead><tbody>${data.report.map(item => `<tr><td>${teacherEscape(item.full_name)}</td><td>${teacherEscape(item.student_no)}</td><td>${teacherEscape(item.attended)}</td><td>${teacherEscape(item.total_sessions)}</td><td>${teacherEscape(item.percentage)}%</td><td>${teacherEscape(item.status)}</td></tr>`).join('') || '<tr><td colspan="6">No attendance data.</td></tr>'}</tbody></table></div></div>`;
+      document.querySelector('#report-result').innerHTML = `<div class="card"><div class="table-responsive"><table><thead><tr><th>Student</th><th>Number</th><th>Attended</th><th>Total sessions</th><th>Percentage</th><th>Status</th></tr></thead><tbody>${data.report.map(item => `<tr class="${item.highlight_red === true ? 'report-student-highlight' : ''}"><td>${teacherEscape(item.full_name)}</td><td>${teacherEscape(item.student_no)}</td><td>${teacherEscape(item.attended)}</td><td>${teacherEscape(item.total_sessions)}</td><td>${teacherEscape(item.percentage)}%</td><td>${teacherEscape(item.status)}</td></tr>`).join('') || '<tr><td colspan="6">No attendance data.</td></tr>'}</tbody></table></div></div>`;
     } catch (error) { document.querySelector('#report-result').innerHTML = message(error.message, 'error'); }
   };
   document.querySelector('#teacher-report-filter').onsubmit = event => { event.preventDefault(); load(); };
@@ -133,7 +321,7 @@ async function reports() {
   render(`<header><span class="eyebrow">Teacher</span><h1>Attendance reports</h1></header><div id="report-result"></div>`);
   try {
     const data = await teacherApi('reports/monthly', null, 'GET');
-    document.querySelector('#report-result').innerHTML = `<div class="card"><div class="table-responsive"><table><thead><tr><th>Student</th><th>Number</th><th>Attended</th><th>Total sessions</th><th>Percentage</th><th>Semester percentage</th></tr></thead><tbody>${data.report.map(item => `<tr><td>${teacherEscape(item.full_name)}</td><td>${teacherEscape(item.student_no)}</td><td>${teacherEscape(item.attended)}</td><td>${teacherEscape(item.total_sessions ?? '—')}</td><td>${item.percentage == null ? '—' : `${teacherEscape(item.percentage)}%`}</td><td>${item.semester_percentage == null ? '—' : `${teacherEscape(item.semester_percentage)}%`}</td></tr>`).join('') || '<tr><td colspan="6">No attendance data.</td></tr>'}</tbody></table></div></div>`;
+    document.querySelector('#report-result').innerHTML = `<div class="card"><div class="table-responsive"><table><thead><tr><th>Student</th><th>Number</th><th>Attended</th><th>Total sessions</th><th>Percentage</th><th>Semester percentage</th></tr></thead><tbody>${data.report.map(item => `<tr class="${item.highlight_red === true ? 'report-student-highlight' : ''}"><td>${teacherEscape(item.full_name)}</td><td>${teacherEscape(item.student_no)}</td><td>${teacherEscape(item.attended)}</td><td>${teacherEscape(item.total_sessions ?? '—')}</td><td>${item.percentage == null ? '—' : `${teacherEscape(item.percentage)}%`}</td><td>${item.semester_percentage == null ? '—' : `${teacherEscape(item.semester_percentage)}%`}</td></tr>`).join('') || '<tr><td colspan="6">No attendance data.</td></tr>'}</tbody></table></div></div>`;
   } catch (error) { document.querySelector('#report-result').innerHTML = message(error.message, 'error'); }
 }
 
@@ -144,8 +332,8 @@ async function initTeacherPage() {
     if (user.user?.role !== 'teacher') { render(message('Teacher access is required.', 'error')); return; }
     const page = document.body.dataset.teacherPage;
     if (page === 'create') await createSession(user.user);
-    if (page === 'qr-display') qrDisplay();
-    if (page === 'live') await liveAttendance();
+    if (page === 'qr-display') await qrDisplay();
+    if (page === 'live') await attendancePage(user.user);
     if (page === 'manual') manualAttendance();
     if (page === 'reports') await reportsForTeacher(user.user);
   } catch (error) { render(message(error.message, 'error')); }
