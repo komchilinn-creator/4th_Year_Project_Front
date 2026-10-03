@@ -1,29 +1,32 @@
-﻿.button-group {
+.button-group {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
 }
 
 .button-pill {
+  padding: 9px 17px;
   border-radius: 999px;
-  padding: 10px 18px;
 }
 
-.badge {
+.badge,
+.status-pill {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
+  gap: 7px;
+  padding: 5px 11px;
+  border: 1px solid rgba(173, 184, 187, .76);
   border-radius: 999px;
-  background: #eff9f1;
-  color: #106543;
-  font-size: .85rem;
+  background: var(--almond);
+  color: var(--navy);
+  font-size: .8rem;
+  font-weight: 700;
 }
 
 .field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 16px;
 }
 
 .field-grid label {
@@ -37,6 +40,7 @@
 
 .table-responsive {
   overflow-x: auto;
+  border-radius: 10px;
 }
 
 .table-responsive table {
@@ -44,18 +48,71 @@
 }
 
 .empty-state {
-  padding: 48px;
+  padding: 48px 24px;
+  color: var(--muted);
   text-align: center;
-  color: #5a7184;
 }
 
 .stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 18px;
-  margin-top: 20px;
+  margin: 0 0 24px;
 }
 
 .stats .card {
-  background: #f7fbff;
+  position: relative;
+  overflow: hidden;
+  background: var(--almond);
+}
+
+.stats .card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--navy);
+}
+
+.stats .card strong {
+  color: var(--muted);
+  font-size: .8rem;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.stats .card h2 {
+  margin: 8px 0 0;
+  color: var(--navy);
+  font-size: 2rem;
+}
+
+.scan-card {
+  max-width: 780px;
+}
+
+.scan-card > p:first-child {
+  color: var(--muted);
+}
+
+.scan-card video {
+  width: 100%;
+  max-height: 440px;
+  margin: 18px 0;
+  border: 1px solid var(--mist);
+  border-radius: 10px;
+  background: var(--noir);
+  object-fit: cover;
+}
+
+.scan-card form {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-strong);
+}
+
+@media (max-width: 620px) {
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
 }

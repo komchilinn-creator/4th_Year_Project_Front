@@ -1,19 +1,30 @@
-﻿.admin-summary {
+.admin-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
-  margin: 26px 0 14px;
+  gap: 18px;
+  margin: 26px 0 18px;
 }
 
 .admin-summary .card {
+  position: relative;
+  overflow: hidden;
   padding: 22px;
-  border-left: 4px solid var(--accent);
+  background: var(--almond);
+}
+
+.admin-summary .card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--navy);
 }
 
 .admin-summary strong {
   display: block;
-  font-size: 28px;
-  margin-top: 12px;
+  margin-top: 10px;
+  color: var(--navy);
+  font-size: 1.8rem;
 }
 
 .admin-actions {
@@ -27,26 +38,18 @@
   min-width: 150px;
 }
 
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
 .status-pill.approved {
-  background: #e8f6ef;
-  color: #106543;
+  background: var(--almond);
+  color: var(--navy);
 }
 
 .status-pill.pending {
-  background: #fff4d8;
-  color: #9a6d00;
+  border-style: dashed;
+  background: rgba(173, 184, 187, .2);
+  color: var(--noir);
 }
 
-@media(max-width: 900px) {
+@media (max-width: 900px) {
   .admin-summary {
     grid-template-columns: 1fr;
   }

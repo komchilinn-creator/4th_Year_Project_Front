@@ -31,7 +31,10 @@ async function submitStudentScan(event) {
   button.disabled = true;
   stopStudentCamera(); // stop the camera the moment we have a token, before the request even goes out
   try {
-    const response = await studentApi('student/scan', { token });
+    result.innerHTML = studentNotice('QR detected. Checking your precise location…', 'success');
+    const location = await window.getAttendanceLocation();
+    result.innerHTML = studentNotice('Location received. Verifying attendance area…', 'success');
+    const response = await studentApi('student/scan', { token, ...location });
     if (response.attendance_recorded !== true) {
       throw new Error('Attendance was not recorded. Please scan the active QR code again.');
     }
@@ -100,7 +103,7 @@ function runJsQrLoop(video, generation, onError) {
 async function openStudentCamera() {
   const result = document.querySelector('#student-scan-result');
   if (!navigator.mediaDevices?.getUserMedia) {
-    result.innerHTML = studentNotice('Camera access is not supported in this browser. Enter the token shown by your teacher.', 'error');
+    result.innerHTML = studentNotice('QR scanning requires camera access over HTTPS. Open this site with HTTPS and try again.', 'error');
     return;
   }
   const hasBarcodeDetector = 'BarcodeDetector' in window;
@@ -129,7 +132,7 @@ async function openStudentCamera() {
 }
 
 function renderStudentScanner(user) {
-  studentScanApp.innerHTML = `<aside><div class="brand">ATTEND<span>QR</span></div><p>${studentEscape(user.full_name)}</p><small>student</small><nav><a href="../../index.html">Dashboard</a><a href="scan-qr.html">Scan QR</a><a href="attendance-history.html">Attendance history</a><a href="schedule.html">Schedule</a></nav></aside><section class="workspace"><header><span class="eyebrow">Student</span><h1>Scan attendance QR</h1></header><div class="card scan-card"><p>Open your camera to scan the teacher's active QR code, or enter the displayed token.</p><button class="secondary" id="student-camera" type="button">Open camera</button><video id="student-preview" autoplay playsinline hidden></video><form id="student-scan-form"><label>QR token<input name="token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus></label><button type="submit">Record attendance</button></form><div id="student-scan-result" aria-live="polite"></div></div></section>`;
+  studentScanApp.innerHTML = `<aside><div class="brand">Easy<span>Attend</span></div><p>${studentEscape(user.full_name)}</p><small>student</small><nav><a href="../../index.html">Dashboard</a><a href="scan-qr.html">Scan QR</a><a href="attendance-history.html">Attendance history</a><a href="schedule.html">Schedule</a></nav></aside><section class="workspace"><header><span class="eyebrow">Student</span><h1>Scan attendance QR</h1></header><div class="card scan-card"><p>Point the scanner at the teacher's active QR code. Attendance requires precise location access and is accepted only inside the configured school area.</p><button class="secondary" id="student-camera" type="button">Scan QR code</button><video id="student-preview" autoplay playsinline hidden></video><form id="student-scan-form"><label>QR token<input name="token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required autofocus></label><button type="submit">Record attendance</button></form><div id="student-scan-result" aria-live="polite"></div></div></section>`;
   document.querySelector('#student-camera').onclick = openStudentCamera;
   document.querySelector('#student-scan-form').onsubmit = submitStudentScan;
 }

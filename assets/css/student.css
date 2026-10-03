@@ -1,5 +1,22 @@
-﻿.student-dashboard .card {
-  border-left: 4px solid #146c94;
+.student-dashboard .card,
+.teacher-dashboard .card {
+  border-left: 3px solid var(--navy);
+}
+
+.attendance-good,
+.attendance-bad {
+  font-weight: 750;
+}
+
+.attendance-good {
+  color: var(--navy);
+}
+
+.attendance-bad {
+  color: var(--noir);
+  text-decoration: underline;
+  text-decoration-color: var(--mist);
+  text-underline-offset: 3px;
 }
 
 .student-actions {
@@ -10,8 +27,8 @@
 }
 
 .student-attendance .status {
+  color: var(--navy);
   font-weight: 700;
-  color: #1f6f8b;
 }
 
 .student-schedule table th,
@@ -21,9 +38,11 @@
 
 .student-schedule .chip {
   display: inline-flex;
-  padding: 6px 12px;
+  padding: 5px 11px;
+  border: 1px solid var(--mist);
   border-radius: 999px;
-  background: #e8f7ff;
-  color: #005b88;
-  font-size: .9rem;
+  background: var(--almond);
+  color: var(--navy);
+  font-size: .85rem;
+  font-weight: 700;
 }
