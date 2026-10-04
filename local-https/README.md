@@ -1,26 +1,24 @@
-# EasyAttend local HTTPS
+# EasyAttend local HTTPS at 10.62.109.42
 
-The frontend runs separately at:
+XAMPP Apache serves the existing frontend at:
 
-`https://172.31.86.42:8000/index.html`
+`https://10.62.109.42/`
 
-Apache serves the backend at:
+The existing backend remains available at:
 
-`https://172.31.86.42/4th_Year_Pj_Backend/public/index.php`
+`https://10.62.109.42/4th_Year_Pj_Backend/public/index.php`
 
-Start the frontend by running `start-frontend-https.cmd` in the project root.
-The old PHP `-S` command is not used because it cannot provide HTTPS.
+Run `start-easyattend-phone.cmd` from the project root to start Apache and
+MySQL and display the phone URLs. Before connecting from a phone for the first
+time, right-click `local-https/setup-phone-firewall.cmd` and choose
+**Run as administrator**.
 
-Before connecting from a phone for the first time, right-click
-`local-https/allow-frontend-port.cmd` and select **Run as administrator**.
+The only certificate that should be copied to the phone is:
 
-The public local CA certificate that the phone must trust is:
+`local-https/attendqr-local-ca.crt`
 
-`attendqr-local-ca.crt`
-
-It can be downloaded on the same Wi-Fi from:
-
-`http://172.31.86.42/attendqr-local-ca.crt`
+The CA private key and the server key stay on the host computer under
+`C:\xampp2\apache\ssl` and must never be copied to the phone.
 
 ## Android
 
@@ -37,6 +35,6 @@ It can be downloaded on the same Wi-Fi from:
 4. Enable full trust for **AttendQR Local Development CA**.
 5. Open the HTTPS EasyAttend URL in Safari and allow camera access.
 
-This certificate is valid for `172.31.86.42`, the previously used
-`192.168.100.227`, `127.0.0.1`, and `localhost`. If the computer receives a
-different LAN address, generate a new server certificate for that address.
+The server certificate is valid for the IP address `10.62.109.42`. The PC and
+phone must be connected to the same local network, and the PC must keep this IP.
+If the address changes, generate a new server certificate with the new IP SAN.

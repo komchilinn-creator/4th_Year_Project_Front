@@ -33,12 +33,13 @@ async function submitStudentScan(event) {
   try {
     result.innerHTML = studentNotice('QR detected. Checking your precise location…', 'success');
     const location = await window.getAttendanceLocation();
-    result.innerHTML = studentNotice('Location received. Verifying attendance area…', 'success');
+    result.innerHTML = studentNotice('Location verified. You are within the allowed university area.', 'success');
     const response = await studentApi('student/scan', { token, ...location });
     if (response.attendance_recorded !== true) {
       throw new Error('Attendance was not recorded. Please scan the active QR code again.');
     }
-    result.innerHTML = studentNotice(response.message || 'Yes - your attendance has been recorded in the teacher\'s roll call.');
+    result.innerHTML = studentNotice('Location verified. You are within the allowed university area.')
+      + studentNotice(response.message || 'Yes - your attendance has been recorded in the teacher\'s roll call.');
     form.reset();
   } catch (error) {
     result.innerHTML = studentNotice(error.message, 'error');

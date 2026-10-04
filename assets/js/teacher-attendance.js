@@ -2,6 +2,8 @@ const teacherApp = document.querySelector('#teacher-app');
 const teacherToken = localStorage.getItem('attendqr-token');
 let liveTimer;
 let qrAttendanceTimer;
+let liveCountdownTimer;
+let qrCountdownTimer;
 let qrAttendanceLatestKey = null;
 
 function teacherEscape(value) {
@@ -41,16 +43,59 @@ function render(content) {
   teacherApp.innerHTML = `<aside><div class="brand"><span class="brand-name">Easy<span>Attend</span></span><img class="brand-logo" src="../../assets/images/ITdepartmentlogo.jpg" alt="Department logo"></div><nav><a href="dashboard.html">Dashboard</a><a href="create-session.html">Create QR session</a><a href="live-attendance.html">Attendance</a><a href="manual-attendance.html">Manual attendance</a><a href="reports.html">Reports</a></nav></aside><section class="workspace">${content}</section>`;
 }
 
+function sessionCountdownMarkup(session) {
+  if (session.expires_at_timestamp == null) return '<div class="session-countdown"><span>Time Remaining</span><strong>Manual end</strong><small>This legacy session has no automatic expiration.</small></div>';
+  const duration = Number(session.duration_minutes);
+  const durationText = Number.isFinite(duration) ? `${duration} minute${duration === 1 ? '' : 's'}` : 'Timed session';
+  return `<div class="session-countdown" aria-live="polite"><span>Time Remaining</span><strong data-session-countdown>--:--</strong><small>${teacherEscape(durationText)} · Expires ${teacherEscape(teacherAttendanceTime(session.expires_at, true))}</small></div>`;
+}
+
+function startSessionCountdown(session, target, onExpire) {
+  if (session.expires_at_timestamp == null || session.server_timestamp == null || !target) return null;
+  const expiresAt = Number(session.expires_at_timestamp);
+  const serverTime = Number(session.server_timestamp);
+  if (!Number.isFinite(expiresAt) || !Number.isFinite(serverTime)) return null;
+  const receivedAt = performance.now();
+  let expirationHandled = false;
+  const update = () => {
+    const estimatedServerTime = serverTime + ((performance.now() - receivedAt) / 1000);
+    const seconds = Math.max(0, Math.ceil(expiresAt - estimatedServerTime));
+    const minutes = Math.floor(seconds / 60);
+    target.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+    if (seconds === 0 && !expirationHandled) {
+      expirationHandled = true;
+      Promise.resolve(onExpire?.()).catch(() => {});
+    }
+  };
+  update();
+  return setInterval(update, 1000);
+}
+
+function closedSessionMarkup(session) {
+  const expired = session?.status === 'EXPIRED';
+  return `${message(expired ? 'This QR attendance session has expired. Students can no longer submit attendance.' : 'This QR attendance session has ended. Students can no longer submit attendance.', 'error')}<p><span class="status-pill">Session Status: ${teacherEscape(session?.status || 'ENDED')}</span></p><p><a class="button-link" href="create-session.html">Create another QR session</a></p>`;
+}
+
 function renderQrDisplay(session, targetId = 'qr-result') {
   const target = document.querySelector(`#${targetId}`);
   if (!target || !session) return;
   if (session.status !== 'ACTIVE' || !session.token) {
-    target.innerHTML = `${message(session.status === 'ENDED' ? 'This QR attendance session has ended. Students can no longer submit attendance.' : 'The active QR token cannot be restored. End this legacy session and create a new one.', 'error')}<p><span class="status-pill">Session Status: ${teacherEscape(session.status || 'UNKNOWN')}</span></p>`;
+    target.innerHTML = session.status === 'EXPIRED' || session.status === 'ENDED'
+      ? closedSessionMarkup(session)
+      : `${message('The active QR token cannot be restored. End this legacy session and create a new one.', 'error')}<p><span class="status-pill">Session Status: ${teacherEscape(session.status || 'UNKNOWN')}</span></p>`;
     return;
   }
   const payload = session.qr_payload || `ATTENDQR:${session.token}`;
   const context = session.subject ? `${session.class_name || session.class || ''} · ${teacherSubjectText(session.subject)}` : '';
-  target.innerHTML = `<div class="qr-session-layout"><div class="teacher-token"><small>ACTIVE QR TOKEN</small><span class="status-pill">Session Status: ACTIVE</span><img id="attendance-qr" alt="Attendance QR code" src="${qrImageUrl(payload)}"><strong>${teacherEscape(session.token)}</strong><p>${teacherEscape(session.title || 'Attendance session')}</p>${context ? `<p>${teacherEscape(context)}</p>` : ''}<p>Started ${new Date(session.starts_at).toLocaleString()}</p><div id="qr-image-error"></div><div class="teacher-controls"><a class="button-link secondary" href="live-attendance.html">View attendance</a><button class="danger" type="button" data-end-session>End QR Session</button></div><div data-end-result></div></div><section class="qr-attendance-popup" id="qr-attendance-popup" aria-live="polite"><div class="qr-attendance-popup__header"><span><i></i>Recent check-ins</span><small id="qr-popup-count">0 present</small></div><div class="qr-attendance-popup__rows" id="qr-popup-rows"><p class="qr-attendance-popup__empty">Waiting for students…</p></div></section></div>`;
+  target.innerHTML = `<div class="qr-session-layout"><div class="teacher-token"><small>ACTIVE QR TOKEN</small><span class="status-pill">Session Status: ACTIVE</span>${sessionCountdownMarkup(session)}<img id="attendance-qr" alt="Attendance QR code" src="${qrImageUrl(payload)}"><strong>${teacherEscape(session.token)}</strong><p>${teacherEscape(session.title || 'Attendance session')}</p>${context ? `<p>${teacherEscape(context)}</p>` : ''}<p>Started ${new Date(session.starts_at).toLocaleString()}</p><div id="qr-image-error"></div><div class="teacher-controls"><a class="button-link secondary" href="live-attendance.html">View attendance</a><button class="danger" type="button" data-end-session>End QR Session</button></div><div data-end-result></div></div><section class="qr-attendance-popup" id="qr-attendance-popup" aria-live="polite"><div class="qr-attendance-popup__header"><span><i></i>Recent check-ins</span><small id="qr-popup-count">0 present</small></div><div class="qr-attendance-popup__rows" id="qr-popup-rows"><p class="qr-attendance-popup__empty">Waiting for students…</p></div></section></div>`;
+  clearInterval(qrCountdownTimer);
+  qrCountdownTimer = startSessionCountdown(session, target.querySelector('[data-session-countdown]'), async () => {
+    const data = await teacherApi('attendance/live', { session_id: session.id || session.session_id }, 'GET');
+    if (data.session?.status !== 'ACTIVE' && document.querySelector(`#${targetId}`) === target) {
+      clearInterval(qrAttendanceTimer);
+      target.innerHTML = closedSessionMarkup(data.session);
+    }
+  });
   document.querySelector('#attendance-qr').onerror = event => {
     event.currentTarget.hidden = true;
     document.querySelector('#qr-image-error').innerHTML = message('QR image could not be loaded. Check your internet connection, then use the token shown above.', 'error');
@@ -61,6 +106,7 @@ function renderQrDisplay(session, targetId = 'qr-result') {
     try {
       const data = await teacherApi('attendance/end', { session_id: session.id || session.session_id });
       clearInterval(qrAttendanceTimer);
+      clearInterval(qrCountdownTimer);
       target.innerHTML = `${message(data.message)}<p><span class="status-pill">Session Status: ENDED</span></p><p><a class="button-link" href="create-session.html">Create another QR session</a></p>`;
     } catch (error) {
       event.currentTarget.disabled = false;
@@ -119,7 +165,7 @@ async function createSession(user) {
   }
   const subjects = user.subjects || [];
   const classes = [...new Map(subjects.map(subject => [subject.class_id, { id: subject.class_id, name: subject.class_name, academic_year_id: subject.academic_year_id }])).values()];
-  render(`<header><span class="eyebrow">Teacher</span><h1>Create QR session</h1></header><div class="card"><p class="notice">The QR session remains active until you explicitly end it.</p><form id="session-form"><fieldset><legend>Academic year / Class</legend><div class="class-choice-list" id="teacher-classes">${teacherClassChoices(classes, 'teacher_class_id')}</div></fieldset><label>Semester<select id="teacher-semester" required></select></label><label>Subject<select name="teacher_subject_id" id="teacher-subject" required></select></label><label>Session title<input name="title" value="Class attendance" required></label><button${subjects.length ? '' : ' disabled'}>Generate QR</button></form><div id="qr-result"></div></div>`);
+  render(`<header><span class="eyebrow">Teacher</span><h1>Create QR session</h1></header><div class="card"><p class="notice">Choose how long students can use the QR code. You can still end the session early at any time.</p><form id="session-form"><fieldset><legend>Academic year / Class</legend><div class="class-choice-list" id="teacher-classes">${teacherClassChoices(classes, 'teacher_class_id')}</div></fieldset><label>Semester<select id="teacher-semester" required></select></label><label>Subject<select name="teacher_subject_id" id="teacher-subject" required></select></label><label>Session title<input name="title" value="Class attendance" required></label><label>Session duration<select name="duration_minutes" required>${Array.from({ length: 15 }, (_, index) => `<option value="${index + 1}"${index === 4 ? ' selected' : ''}>${index + 1} minute${index ? 's' : ''}</option>`).join('')}</select><small class="field-help">The QR code expires automatically after 1–15 minutes.</small></label><button${subjects.length ? '' : ' disabled'}>Generate QR</button></form><div id="qr-result"></div></div>`);
   const classChoicesRoot = document.querySelector('#teacher-classes');
   const semester = document.querySelector('#teacher-semester');
   const subject = document.querySelector('#teacher-subject');
@@ -172,7 +218,7 @@ function teacherAttendanceSessionList(sessions) {
     if (!groups.has(month)) groups.set(month, []);
     groups.get(month).push(session);
   });
-  return [...groups.entries()].map(([month, items]) => `<section class="attendance-month"><h3>${teacherEscape(month)}</h3>${items.map(session => { const date = teacherAttendanceDate(session.starts_at); const active = session.status === 'ACTIVE'; return `<button type="button" class="attendance-session-item${active ? ' is-live' : ''}" data-session-id="${session.id}"><span class="attendance-session-date">${active ? '<i class="attendance-live-dot" aria-label="Live"></i>' : ''}<strong>${teacherEscape(date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }))}</strong></span><span>${teacherEscape(teacherAttendanceTime(session.starts_at))} – ${active ? '<b>LIVE</b>' : teacherEscape(teacherAttendanceTime(session.ends_at))}</span><small>${teacherEscape(session.class_name || 'Class not specified')} · ${active ? 'Active' : 'Ended'}</small></button>`; }).join('')}</section>`).join('');
+  return [...groups.entries()].map(([month, items]) => `<section class="attendance-month"><h3>${teacherEscape(month)}</h3>${items.map(session => { const date = teacherAttendanceDate(session.starts_at); const active = session.status === 'ACTIVE'; return `<button type="button" class="attendance-session-item${active ? ' is-live' : ''}" data-session-id="${session.id}"><span class="attendance-session-date">${active ? '<i class="attendance-live-dot" aria-label="Live"></i>' : ''}<strong>${teacherEscape(date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }))}</strong></span><span>${teacherEscape(teacherAttendanceTime(session.starts_at))} – ${active ? '<b>LIVE</b>' : teacherEscape(teacherAttendanceTime(session.ends_at))}</span><small>${teacherEscape(session.class_name || 'Class not specified')} · ${active ? 'Active' : teacherEscape(session.status === 'EXPIRED' ? 'Expired' : 'Ended')}</small></button>`; }).join('')}</section>`).join('');
 }
 
 function teacherAttendanceDetails(data) {
@@ -180,7 +226,7 @@ function teacherAttendanceDetails(data) {
   const active = session.status === 'ACTIVE';
   const start = teacherAttendanceDate(session.starts_at);
   const rows = data.attendance || [];
-  return `<div class="attendance-detail-heading"><div><span class="eyebrow">Selected session</span><h2 id="attendance-modal-title">${active ? '<i class="attendance-live-dot" aria-label="Live"></i>' : ''}${teacherEscape(start.toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' }))}</h2><p>${teacherEscape(teacherAttendanceTime(session.starts_at))} – ${active ? '<strong>LIVE</strong>' : teacherEscape(teacherAttendanceTime(session.ends_at))} · ${teacherEscape(session.class_name || 'Class not specified')}</p></div><span class="status-pill">${teacherEscape(session.status)}</span></div><div class="attendance-detail-summary"><strong>${Number(data.present_students || 0)}</strong><span>QR submissions</span></div>${active ? '<p class="field-help">Showing the latest 3 submissions. This list updates automatically.</p>' : '<p class="field-help">Showing every student who submitted attendance for this session.</p>'}<div class="table-responsive"><table><thead><tr><th>Student Name</th><th>Roll No.</th><th>Submitted</th></tr></thead><tbody>${rows.map(item => `<tr><td>${teacherEscape(item.full_name)}</td><td>${teacherEscape(item.student_no)}</td><td>${teacherEscape(teacherAttendanceTime(item.recorded_at, true))}</td></tr>`).join('') || '<tr><td colspan="3">No students submitted attendance for this session.</td></tr>'}</tbody></table></div>`;
+  return `<div class="attendance-detail-heading"><div><span class="eyebrow">Selected session</span><h2 id="attendance-modal-title">${active ? '<i class="attendance-live-dot" aria-label="Live"></i>' : ''}${teacherEscape(start.toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' }))}</h2><p>${teacherEscape(teacherAttendanceTime(session.starts_at))} – ${active ? '<strong>LIVE</strong>' : teacherEscape(teacherAttendanceTime(session.ends_at))} · ${teacherEscape(session.class_name || 'Class not specified')}</p></div><span class="status-pill">${teacherEscape(session.status)}</span></div>${active ? `${sessionCountdownMarkup(session)}<div class="teacher-controls attendance-live-controls"><button class="danger" type="button" data-live-end-session>End Session</button></div><div data-live-end-result></div>` : (session.status === 'EXPIRED' ? message('Session expired. This QR code can no longer accept attendance.', 'error') : '')}<div class="attendance-detail-summary"><strong>${Number(data.present_students || 0)}</strong><span>QR submissions</span></div>${active ? '<p class="field-help">Showing the latest 3 submissions. This list updates automatically.</p>' : '<p class="field-help">Showing every student who submitted attendance for this session.</p>'}<div class="table-responsive"><table><thead><tr><th>Student Name</th><th>Roll No.</th><th>Submitted</th></tr></thead><tbody>${rows.map(item => `<tr><td>${teacherEscape(item.full_name)}</td><td>${teacherEscape(item.student_no)}</td><td>${teacherEscape(teacherAttendanceTime(item.recorded_at, true))}</td></tr>`).join('') || '<tr><td colspan="3">No students submitted attendance for this session.</td></tr>'}</tbody></table></div>`;
 }
 
 async function attendancePage(user) {
@@ -200,9 +246,11 @@ async function attendancePage(user) {
   const modal = document.querySelector('#attendance-modal');
   let selectedSessionId = null;
   let requestSequence = 0;
+  let listRequestSequence = 0;
 
   const closeModal = () => {
     clearInterval(liveTimer);
+    clearInterval(liveCountdownTimer);
     requestSequence++;
     selectedSessionId = null;
     modal.hidden = true;
@@ -215,7 +263,32 @@ async function attendancePage(user) {
     const sequence = ++requestSequence;
     const data = await teacherApi('attendance/session', { session_id: sessionId }, 'GET');
     if (sequence !== requestSequence || !document.querySelector('#attendance-detail')) return null;
+    clearInterval(liveCountdownTimer);
     detail.innerHTML = teacherAttendanceDetails(data);
+    if (data.session?.status === 'ACTIVE') {
+      liveCountdownTimer = startSessionCountdown(data.session, detail.querySelector('[data-session-countdown]'), async () => {
+        const update = await loadDetail(sessionId);
+        if (update?.session?.status !== 'ACTIVE') {
+          clearInterval(liveTimer);
+          await loadSessions(true);
+        }
+      });
+      const endButton = detail.querySelector('[data-live-end-session]');
+      endButton.onclick = async () => {
+        if (!confirm('Are you sure you want to end this QR attendance session? Students will no longer be able to submit attendance.')) return;
+        endButton.disabled = true;
+        try {
+          await teacherApi('attendance/end', { session_id: data.session.id || data.session.session_id });
+          clearInterval(liveTimer);
+          clearInterval(liveCountdownTimer);
+          await loadDetail(sessionId);
+          await loadSessions(true);
+        } catch (error) {
+          endButton.disabled = false;
+          detail.querySelector('[data-live-end-result]').innerHTML = message(error.message, 'error');
+        }
+      };
+    }
     document.querySelectorAll('.attendance-session-item').forEach(item => item.classList.toggle('is-selected', Number(item.dataset.sessionId) === Number(sessionId)));
     return data;
   };
@@ -244,11 +317,14 @@ async function attendancePage(user) {
   };
 
   const loadSessions = async keepModalOpen => {
+    const sequence = ++listRequestSequence;
     clearInterval(liveTimer);
+    if (!keepModalOpen) clearInterval(liveCountdownTimer);
     sessionList.innerHTML = '<div class="empty-state">Loading sessions…</div>';
     if (!keepModalOpen) closeModal();
     try {
       const data = await teacherApi('attendance/sessions', { teacher_subject_id: subjectSelect.value }, 'GET');
+      if (sequence !== listRequestSequence) return;
       sessionList.innerHTML = teacherAttendanceSessionList(data.sessions || []);
       document.querySelectorAll('.attendance-session-item').forEach(item => item.onclick = () => selectSession(item.dataset.sessionId));
       if (keepModalOpen && selectedSessionId) document.querySelector(`[data-session-id="${selectedSessionId}"]`)?.classList.add('is-selected');
@@ -270,9 +346,11 @@ async function attendancePage(user) {
   classChoicesRoot.onchange = updateSemesters;
   semesterSelect.onchange = updateSubjects;
   subjectSelect.onchange = () => loadSessions(false);
+  let activeSession = null;
   try {
     const active = await teacherApi('attendance/active', null, 'GET');
     if (active.session) {
+      activeSession = active.session;
       const selected = subjects.find(subject => Number(subject.assignment_id) === Number(active.session.teacher_subject_id));
       if (selected) {
         setTeacherClass(classChoicesRoot, selected.class_id);
@@ -285,6 +363,7 @@ async function attendancePage(user) {
   } catch (error) { /* Session history remains available when there is no active session. */ }
   if (!subjectSelect.options.length) updateSemesters();
   await loadSessions(false);
+  if (activeSession) await selectSession(activeSession.id || activeSession.session_id);
 }
 
 function manualAttendance() {

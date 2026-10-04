@@ -3,7 +3,7 @@
 @import url("auth.css");
 @import url("admin.css");
 @import url("student.css");
-@import url("teacher.css");
+@import url("teacher.css?v=2");
 @import url("dashboard.css");
 
 :root {

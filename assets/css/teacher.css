@@ -39,6 +39,46 @@ button.danger:hover {
   letter-spacing: .12em;
 }
 
+.session-countdown {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  width: min(100%, 300px);
+  padding: 14px 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--almond);
+  color: var(--navy);
+}
+
+.session-countdown span {
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.session-countdown strong {
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(1.8rem, 5vw, 2.55rem);
+  line-height: 1.1;
+  letter-spacing: .04em;
+}
+
+.session-countdown small {
+  color: var(--muted);
+  text-align: center;
+}
+
+.attendance-detail-pane .session-countdown {
+  margin: 18px 0 12px;
+}
+
+.attendance-live-controls {
+  max-width: 300px;
+  margin-bottom: 12px;
+}
+
 .teacher-token img {
   width: min(100%, 240px);
   padding: 12px;
