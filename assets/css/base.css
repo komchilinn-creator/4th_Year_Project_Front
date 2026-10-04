@@ -102,6 +102,10 @@ aside {
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding-bottom: 22px;
   border-bottom: 1px solid rgba(249, 248, 247, .18);
   color: var(--ivory);
@@ -111,8 +115,22 @@ aside {
   line-height: 1;
 }
 
-.brand span {
+.brand-name {
+  color: var(--ivory);
+}
+
+.brand-name span {
   color: var(--brand-accent);
+}
+
+.brand-logo {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border: 2px solid rgba(249, 248, 247, .72);
+  border-radius: 50%;
+  background: var(--ivory);
+  object-fit: cover;
 }
 
 .eyebrow {

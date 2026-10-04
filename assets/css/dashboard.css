@@ -41,52 +41,6 @@
   flex: 0 0 21px;
 }
 
-.dashboard-summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.dashboard-summary article {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-  padding: 18px 20px;
-  border: 1px solid rgba(173, 184, 187, .62);
-  border-radius: 14px;
-  background: rgba(249, 248, 247, .92);
-  box-shadow: 0 8px 22px rgba(35, 42, 47, .055);
-}
-
-.dashboard-summary article > span {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
-  place-items: center;
-  border-radius: 11px;
-  background: var(--almond);
-  color: var(--navy);
-}
-
-.dashboard-summary strong,
-.dashboard-summary small {
-  display: block;
-}
-
-.dashboard-summary strong {
-  color: var(--navy);
-  font-size: 1.45rem;
-  line-height: 1.15;
-}
-
-.dashboard-summary small {
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: .78rem;
-}
-
 .dashboard-reference-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -221,6 +175,12 @@ button.dashboard-text-action:hover {
   white-space: nowrap;
 }
 
+.dashboard-data-card .dashboard-card-stat {
+  color: var(--navy);
+  font-weight: 750;
+  white-space: normal;
+}
+
 .student-missed-card.has-missed {
   border-top: 3px solid var(--navy);
 }
@@ -244,12 +204,6 @@ button.dashboard-text-action:hover {
   background: var(--almond);
 }
 
-.dashboard-metric-card--accent {
-  border-color: var(--navy);
-  background: var(--navy);
-  color: var(--ivory);
-}
-
 .dashboard-metric-card span,
 .dashboard-metric-card small {
   display: block;
@@ -263,15 +217,6 @@ button.dashboard-text-action:hover {
   color: var(--navy);
   font-size: 2.3rem;
   line-height: 1;
-}
-
-.dashboard-metric-card--accent span,
-.dashboard-metric-card--accent small {
-  color: rgba(249, 248, 247, .72);
-}
-
-.dashboard-metric-card--accent strong {
-  color: var(--ivory);
 }
 
 .dashboard-today {
@@ -408,10 +353,6 @@ button.dashboard-text-action:hover {
 
   .dashboard-primary-action {
     align-self: flex-start;
-  }
-
-  .dashboard-summary {
-    grid-template-columns: 1fr;
   }
 
   .dashboard-attendance-row {

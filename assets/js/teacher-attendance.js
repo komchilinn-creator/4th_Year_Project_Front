@@ -37,7 +37,7 @@ function qrImageUrl(payload, size = 320) {
 }
 
 function render(content) {
-  teacherApp.innerHTML = `<aside><div class="brand">Easy<span>Attend</span></div><nav><a href="dashboard.html">Dashboard</a><a href="create-session.html">Create QR session</a><a href="live-attendance.html">Attendance</a><a href="manual-attendance.html">Manual attendance</a><a href="reports.html">Reports</a></nav></aside><section class="workspace">${content}</section>`;
+  teacherApp.innerHTML = `<aside><div class="brand"><span class="brand-name">Easy<span>Attend</span></span><img class="brand-logo" src="../../assets/images/ITdepartmentlogo.jpg" alt="Department logo"></div><nav><a href="dashboard.html">Dashboard</a><a href="create-session.html">Create QR session</a><a href="live-attendance.html">Attendance</a><a href="manual-attendance.html">Manual attendance</a><a href="reports.html">Reports</a></nav></aside><section class="workspace">${content}</section>`;
 }
 
 function renderQrDisplay(session, targetId = 'qr-result') {

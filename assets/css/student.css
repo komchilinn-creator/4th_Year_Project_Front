@@ -30,19 +30,3 @@
   color: var(--navy);
   font-weight: 700;
 }
-
-.student-schedule table th,
-.student-schedule table td {
-  padding: 16px;
-}
-
-.student-schedule .chip {
-  display: inline-flex;
-  padding: 5px 11px;
-  border: 1px solid var(--mist);
-  border-radius: 999px;
-  background: var(--almond);
-  color: var(--navy);
-  font-size: .85rem;
-  font-weight: 700;
-}
