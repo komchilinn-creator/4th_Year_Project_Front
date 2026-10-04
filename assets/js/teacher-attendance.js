@@ -16,7 +16,8 @@ const setTeacherClass = (container, value) => {
 };
 
 async function teacherApi(action, payload, method = 'POST') {
-  const base = window.APP_CONFIG?.API_BASE_URL || 'http://localhost/4th_Year_Pj_Backend/public/index.php';
+  const base = window.APP_CONFIG?.API_BASE_URL;
+  if (!base) throw new Error('API configuration is missing. Load config.js before teacher-attendance.js.');
   const options = { method, credentials: 'include', headers: { 'Content-Type': 'application/json', ...(teacherToken ? { Authorization: `Bearer ${teacherToken}` } : {}) } };
   let url = `${base}?action=${encodeURIComponent(action)}`;
   if (method === 'GET') url += payload ? `&${new URLSearchParams(payload)}` : '';
